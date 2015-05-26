@@ -5,7 +5,7 @@ This is a bot who can connect IRC channels with Telegram chat groups.
 Dependencies
 ==========
 + `python-irc <https://pypi.python.org/pypi/irc>`_
-+ `python-requests <https://pypi.python.org/pypi/requests>`
++ `python-requests <https://pypi.python.org/pypi/requests>`_
 + `tg <https://github.com/vysheng/tg>`_
 
 Notice

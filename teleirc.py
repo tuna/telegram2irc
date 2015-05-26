@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-
+import os
 import sys
 import re
 import threading
@@ -10,6 +10,7 @@ import time
 import irc.client
 
 from telegram import Telegram
+from photostore import Imgur, VimCN
 from config import config
 
 help_txt = {
@@ -32,6 +33,11 @@ tele_me = None
 
 irc_blacklist = []
 
+usernicks_path = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "usernicks"
+)
+
 def on_pong(connection, event):
     connection.last_pong = time.time()
     print('[irc]  PONG from: ', event.source)
@@ -53,11 +59,11 @@ def on_privmsg(connection, event):
 
     if tele_target is not None and irc_nick not in irc_blacklist:
         tele_conn.send_msg(
-                tele_target,
-                msg_format.format(
-                    nick = irc_nick,
-                    msg = msg
-                )
+            tele_target,
+            msg_format.format(
+                nick=irc_nick,
+                msg=msg
+            )
         )
 
 def on_nickinuse(connection, event):
@@ -72,46 +78,42 @@ def main_loop():
         tele_init()
         while True:
             msg = tele_conn.recv_one_msg()
-            if len(msg) == 3:
-                # FixMe: dirty-hack, user info  -bigeagle
-                # FIXME: yeah, it's a little bit dirty, and it
-                # has a small bug, people's nick will still be
-                # number if it is the first time (s)he send a
-                # massage. But it is all my fault, not bigeagle's,
-                # because the main code here is poorly designed.
-                # QAQ -WaterA
-                userid, username, realname = msg
-                change_usernick(userid, username or realname)
+
+            if msg is None or msg.user_id == tele_me:
                 continue
-            if msg == -1:
-                break
 
-            elif msg is not None and msg[2] != tele_me:
-                _time, chatid, userid, content = msg
-                print('[tel] ', *msg)
-                if chatid is not None:
-                    # msg is from chat group
-                    irc_target = get_irc_binding('chat#'+chatid)
-                elif content.startswith('.'):
-                    # msg is from user and is a command
-                    handle_command(msg)
-                    irc_target = None
-                elif re.match(r'.?help\s*$', content):
-                    # msg is from user and user needs help
-                    send_help(userid)
-                    irc_target = None
-                else:
-                    # msg is from user and is not a command
-                    irc_target = get_irc_binding('user#'+userid)
+            print('[tel] {}, {}, {}, {}'.format(
+                msg.user_id, msg.username, msg.chat_id, msg.content
+            ))
+            user_id, username, chat_id, content = (
+                str(msg.user_id), msg.username, str(msg.chat_id), msg.content
+            )
 
-                if irc_target is not None:
-                    nick = get_usernick_from_id(userid)
-                    if nick is None:
-                        tele_conn.get_user_info(userid)
-                        nick = msg[2]
-                    lines = msg[3].split('\n')
-                    for line in lines:
-                        irc_conn.privmsg(irc_target, msg_format.format(nick=nick, msg=line))
+            if chat_id is not None:
+                irc_target = get_irc_binding('chat#'+chat_id)
+            elif content.startswith('.'):
+                handle_command(msg)
+                irc_target = None
+            elif re.match(r'.?help\s*$', content):
+                # msg is from user and user needs help
+                send_help(user_id)
+                irc_target = None
+            else:
+                # msg is from user and is not a command
+                irc_target = get_irc_binding('user#'+user_id)
+
+            if irc_target is not None:
+                nick = get_usernick_from_id(user_id)
+                if nick is None:
+                    nick = username
+                    change_usernick(user_id, nick)
+
+                lines = content.split('\n')
+                for line in lines:
+                    irc_conn.privmsg(
+                        irc_target,
+                        msg_format.format(nick=nick, msg=line)
+                    )
 
     tasks = []
     for i in (irc_thread, tele_thread):
@@ -125,21 +127,23 @@ def main_loop():
 
 
 def get_irc_binding(tele_chat):
-    for b in bindings:
-        if b[1] == tele_chat:
-            return b[0]
+    for ib, tb in bindings:
+        if tb == tele_chat:
+            return ib
     return None
 
 def get_tele_binding(irc_chan):
-    for b in bindings:
-        if b[0] == irc_chan:
-            return b[1]
+    for ib, tb in bindings:
+        if ib == irc_chan:
+            return tb
     return None
 
 def get_usernick_from_id(userid):
+    userid = str(userid)
     return usernicks.get(userid, None)
 
 def change_usernick(userid, newnick):
+    userid = str(userid)
     usernicks[userid] = newnick
     save_usernicks()
 
@@ -218,8 +222,8 @@ def irc_init():
     try:
         if usessl:
             ssl_factory = irc.connection.Factory(wrapper=ssl.wrap_socket)
-            irc_conn.connect(server, port, nickname,
-                    connect_factory=ssl_factory)
+            irc_conn.connect(
+                server, port, nickname, connect_factory=ssl_factory)
         else:
             irc_conn.connect(server, port, nickname)
     except irc.client.ServerConnectionError:
@@ -256,13 +260,25 @@ def tele_init():
 
     server = config['telegram']['server']
     port = config['telegram']['port']
-    tele_me = config['telegram']['me'].replace('user#', '')
-    tele_conn = Telegram(server, port)
+    tele_me = int(config['telegram']['me'].replace('user#', ''))
+    photo_store = photo_store_init()
+    tele_conn = Telegram(server, port, photo_store)
+
+
+def photo_store_init():
+    provider = config['photo_store']['provider']
+    if provider == "imgur":
+        options = config['photo_store']['options']
+        return Imgur(**options)
+    elif provider == "vim-cn":
+        return VimCN()
+
+    return None
 
 def load_usernicks():
     global usernicks
     try:
-        with open('usernicks', 'rb') as f:
+        with open(usernicks_path, 'rb') as f:
             usernicks = pickle.load(f)
     except Exception:
         usernicks = {}
@@ -270,7 +286,7 @@ def load_usernicks():
 def save_usernicks():
     global usernicks
     try:
-        with open('usernicks', 'wb') as f:
+        with open(usernicks_path, 'wb') as f:
             pickle.dump(usernicks, f, pickle.HIGHEST_PROTOCOL)
     except Exception:
         pass

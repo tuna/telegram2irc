@@ -51,11 +51,11 @@ class Telegram(object):
         self.send_cmd(cmd)
 
     def send_user_msg(self, userid, msg):
-        peer = 'user#' + userid
+        peer = 'user#' + str(userid)
         self.send_msg(peer, msg)
 
     def send_chat_msg(self, chatid, msg):
-        peer = 'chat#' + chatid
+        peer = 'chat#' + str(chatid)
         self.send_msg(peer, msg)
 
     def download_photo(self, msg_id):

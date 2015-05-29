@@ -91,16 +91,18 @@ def main_loop():
 
             if chat_id is not None:
                 irc_target = get_irc_binding('chat#'+chat_id)
-            elif content.startswith('.'):
-                handle_command(msg)
-                irc_target = None
-            elif re.match(r'.?help\s*$', content):
-                # msg is from user and user needs help
-                send_help(user_id)
-                irc_target = None
-            else:
-                # msg is from user and is not a command
-                irc_target = get_irc_binding('user#'+user_id)
+
+            if irc_target is None:
+                if content.startswith('.'):
+                    handle_command(msg)
+                    irc_target = None
+                elif re.match(r'.?help\s*$', content):
+                    # msg is from user and user needs help
+                    send_help(user_id)
+                    irc_target = None
+                else:
+                    # msg is from user and is not a command
+                    irc_target = get_irc_binding('user#'+user_id)
 
             if irc_target is not None:
                 nick = get_usernick_from_id(user_id)
@@ -108,12 +110,12 @@ def main_loop():
                     nick = username
                     change_usernick(user_id, nick)
 
-                lines = content.split('\n')
-                for line in lines:
-                    irc_conn.privmsg(
-                        irc_target,
-                        msg_format.format(nick=nick, msg=line)
-                    )
+            lines = content.split('\n')
+            for line in lines:
+                irc_conn.privmsg(
+                    irc_target,
+                    msg_format.format(nick=nick, msg=line)
+                )
 
     tasks = []
     for i in (irc_thread, tele_thread):
@@ -169,12 +171,14 @@ def invite_to_join(userid, chatlist):
             tele_conn.send_user_msg(userid, '{0} is not avaliable. Use `.list` to see avaliable channels'.format(c))
 
 def handle_command(msg):
-    if not msg[3].startswith('.'):
+    msg.user_id, msg.username, msg.chat_id, msg.content
+
+    if not msg.content.startswith('.'):
         return
 
-    userid = msg[2]
+    userid = str(msg.user_id)
     try:
-        tmp = msg[3].split()
+        tmp = msg.content.split()
         cmd = tmp[0][1:].lower()
         args = tmp[1:]
     except IndexError:
@@ -201,6 +205,7 @@ def handle_command(msg):
         tele_conn.send_user_msg(userid, chan)
     else:
         send_help(userid)
+
 
 def irc_init():
     global irc_channels

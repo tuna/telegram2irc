@@ -110,12 +110,12 @@ def main_loop():
                     nick = username
                     change_usernick(user_id, nick)
 
-            lines = content.split('\n')
-            for line in lines:
-                irc_conn.privmsg(
-                    irc_target,
-                    msg_format.format(nick=nick, msg=line)
-                )
+                lines = content.split('\n')
+                for line in lines:
+                    irc_conn.privmsg(
+                        irc_target,
+                        msg_format.format(nick=nick, msg=line)
+                    )
 
     tasks = []
     for i in (irc_thread, tele_thread):

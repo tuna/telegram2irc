@@ -106,9 +106,10 @@ def main_loop():
 
             if irc_target is not None:
                 nick = get_usernick_from_id(user_id)
-                if nick is None:
+                if not nick:
                     nick = username
-                    change_usernick(user_id, nick)
+                    if username:
+                        change_usernick(user_id, nick)
 
                 lines = content.split('\n')
                 for line in lines:
